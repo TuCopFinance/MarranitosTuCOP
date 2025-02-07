@@ -1,16 +1,32 @@
 {
-  "name": "ccop-staking-app",
-  "version": "1.0.0",
+  "name": "ccop-staking-dapp",
   "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 0",
+    "preview": "vite preview"
+  },
   "dependencies": {
     "@web3auth/modal": "^7.3.0",
-    "ethers": "^5.7.2"
-  },
-  "scripts": {
-    "start": "serve .",
-    "dev": "serve ."
+    "bootstrap": "^5.3.3",
+    "bootstrap-icons": "^1.11.3",
+    "ethers": "^5.7.2",
+    "react": "^18.2.0",
+    "react-bootstrap": "^2.10.1",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "serve": "^14.2.1"
+    "@types/react": "^18.2.56",
+    "@types/react-dom": "^18.2.19",
+    "@vitejs/plugin-react": "^4.2.1",
+    "eslint": "^8.56.0",
+    "eslint-plugin-react": "^7.33.2",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.5",
+    "vite": "^5.1.4",
+    "vite-plugin-node-polyfills": "^0.21.0"
   }
-} 
+}

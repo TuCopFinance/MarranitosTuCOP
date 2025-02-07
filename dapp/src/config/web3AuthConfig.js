@@ -1,5 +1,5 @@
 export const web3authConfig = {
-    clientId: "TU_CLIENT_ID_DE_WEB3AUTH",
+    clientId: import.meta.env.VITE_WEB3AUTH_CLIENT_ID,
     web3AuthNetwork: "mainnet",
     chainConfig: {
         chainNamespace: "eip155",
