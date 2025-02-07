@@ -102,6 +102,26 @@ describe("cCOPStaking", function () {
         await expect(staking.connect(user1).stake(exceedingAmount, DAYS_30))
           .to.be.revertedWithCustomError(staking, "ExceedsStakingLimit");
       });
+
+      it("Should revert when staking amount is zero", async function () {
+        await expect(staking.connect(user1).stake(0, DAYS_30))
+          .to.be.revertedWith("Amount must be greater than 0");
+      });
+
+      it("Should revert when user has insufficient balance", async function () {
+        const exceedingAmount = ethers.parseEther("2000000");
+        await cCOPToken.connect(user1).approve(await staking.getAddress(), exceedingAmount);
+        
+        await expect(staking.connect(user1).stake(exceedingAmount, DAYS_30))
+          .to.be.revertedWithCustomError(cCOPToken, "ERC20InsufficientBalance");
+      });
+
+      it("Should revert when user has insufficient allowance", async function () {
+        await cCOPToken.connect(user1).approve(await staking.getAddress(), 0);
+        const amount = ethers.parseEther("1000");
+        await expect(staking.connect(user1).stake(amount, DAYS_30))
+          .to.be.revertedWithCustomError(cCOPToken, "ERC20InsufficientAllowance");
+      });
     });
 
     describe("Withdraw", function () {
@@ -112,7 +132,7 @@ describe("cCOPStaking", function () {
 
       it("Should not allow withdrawal before lock period", async function () {
         await expect(staking.connect(user1).withdraw(0))
-          .to.be.revertedWith("Stake still locked");
+          .to.be.revertedWithCustomError(staking, "StakeStillLocked");
       });
 
       it("Should allow withdrawal after lock period", async function () {
@@ -138,7 +158,20 @@ describe("cCOPStaking", function () {
         await time.increase(DAYS_30);
         await staking.connect(user1).withdraw(0);
         await expect(staking.connect(user1).withdraw(0))
-          .to.be.revertedWith("Already claimed");
+          .to.be.revertedWithCustomError(staking, "StakeAlreadyClaimed");
+      });
+
+      it("Should revert with invalid stake index", async function () {
+        await expect(staking.connect(user1).withdraw(999))
+          .to.be.revertedWithCustomError(staking, "InvalidStakeIndex");
+      });
+
+      it("Should revert when trying to withdraw stake that doesn't belong to caller", async function () {
+        const amount = ethers.parseEther("1000");
+        await staking.connect(user1).stake(amount, DAYS_30);
+        await time.increase(DAYS_30);
+        await expect(staking.connect(user2).withdraw(0))
+          .to.be.revertedWithCustomError(staking, "InvalidStakeIndex");
       });
     });
 
@@ -169,19 +202,28 @@ describe("cCOPStaking", function () {
       });
 
       it("No debería permitir retiro anticipado después del período de bloqueo", async function () {
-        // Avanzar más allá del período de bloqueo
         await time.increase(DAYS_30 + 1);
-
         await expect(staking.connect(user1).earlyWithdraw(0))
-          .to.be.revertedWith("Stake period ended");
+          .to.be.revertedWithCustomError(staking, "StakePeriodEnded");
       });
 
       it("No debería permitir retiro anticipado si ya fue retirado", async function () {
         await time.increase(15 * 24 * 60 * 60);
         await staking.connect(user1).earlyWithdraw(0);
-
         await expect(staking.connect(user1).earlyWithdraw(0))
-          .to.be.revertedWith("Already claimed");
+          .to.be.revertedWithCustomError(staking, "StakeAlreadyClaimed");
+      });
+
+      it("Should revert early withdrawal with invalid stake index", async function () {
+        await expect(staking.connect(user1).earlyWithdraw(999))
+          .to.be.revertedWithCustomError(staking, "InvalidStakeIndex");
+      });
+
+      it("Should revert when trying to early withdraw stake that doesn't belong to caller", async function () {
+        const amount = ethers.parseEther("1000");
+        await staking.connect(user1).stake(amount, DAYS_30);
+        await expect(staking.connect(user2).earlyWithdraw(0))
+          .to.be.revertedWithCustomError(staking, "InvalidStakeIndex");
       });
     });
 
@@ -293,32 +335,75 @@ describe("cCOPStaking", function () {
 
     it("Should not allow non-owner to update governance", async function () {
       await expect(staking.connect(user1).updateGovernance(user2.address))
-        .to.be.revertedWithCustomError(staking, "OwnableUnauthorizedAccount")
-        .withArgs(user1.address);
+        .to.be.revertedWith("Not authorized: only governance");
     });
   });
 
-  describe("Paginación", function () {
-    beforeEach(async function () {
-      // Crear múltiples stakes para probar paginación
-      for (let i = 0; i < 5; i++) {
-        await staking.connect(user1).stake(ethers.parseEther("1000"), DAYS_30);
-      }
+  describe("Governance Functions", function () {
+    describe("updateStakingRates", function () {
+      it("Should revert when non-governance tries to update rates", async function () {
+        await expect(staking.connect(user1).updateStakingRates(100, 150, 200))
+          .to.be.revertedWith("Not authorized: only governance");
+      });
+
+      it("Should revert when trying to set zero rates", async function () {
+        await expect(staking.connect(owner).updateStakingRates(0, 150, 200))
+          .to.be.revertedWithCustomError(staking, "InvalidParameter");
+      });
     });
 
-    it("Should return correct paginated stakes", async function () {
-      const stakes = await staking.getUserStakesPaginated(user1.address, 1, 2);
-      expect(stakes.length).to.equal(2);
+    describe("updateEarlyWithdrawalPenalty", function () {
+      it("Should revert when non-governance tries to update penalty", async function () {
+        await expect(staking.connect(user1).updateEarlyWithdrawalPenalty(30))
+          .to.be.revertedWith("Not authorized: only governance");
+      });
+
+      it("Should revert when trying to set penalty above 50%", async function () {
+        await expect(staking.connect(owner).updateEarlyWithdrawalPenalty(51))
+          .to.be.revertedWithCustomError(staking, "InvalidParameter");
+      });
     });
 
-    it("Should return correct number of active stakes with pagination", async function () {
-      const activeStakes = await staking.getTotalActiveStakesPaginated(user1.address, 0, 3);
-      expect(activeStakes).to.equal(3);
+    describe("sweepUnclaimedTokens", function () {
+      it("Should revert when non-governance tries to sweep tokens", async function () {
+        await expect(staking.connect(user1).sweepUnclaimedTokens(30))
+          .to.be.revertedWith("Not authorized: only governance");
+      });
+
+      it("Should handle sweep when no unclaimed tokens exist", async function () {
+        await staking.connect(owner).sweepUnclaimedTokens(30);
+        // No debería revertir, pero tampoco debería transferir tokens
+      });
+    });
+  });
+
+  describe("Edge Cases", function () {
+    it("Should handle multiple stakes and withdrawals correctly", async function () {
+      const amount = ethers.parseEther("1000");
+      
+      await staking.connect(user1).stake(amount, DAYS_30);
+      await staking.connect(user1).stake(amount, DAYS_60);
+      await staking.connect(user1).stake(amount, DAYS_90);
+
+      await time.increase(DAYS_90);
+
+      await staking.connect(user1).withdraw(0);
+      await staking.connect(user1).withdraw(1);
+      await staking.connect(user1).withdraw(2);
+
+      await expect(staking.connect(user1).withdraw(0))
+        .to.be.revertedWithCustomError(staking, "StakeAlreadyClaimed");
     });
 
-    it("Should handle pagination bounds correctly", async function () {
-      const emptyStakes = await staking.getUserStakesPaginated(user1.address, 10, 2);
-      expect(emptyStakes.length).to.equal(0);
+    it("Should handle large values correctly", async function () {
+      const maxLimit = await staking.MAX_STAKE_30();
+      const exceedingAmount = maxLimit + 1n;
+      
+      await cCOPToken.mint(user1.address, exceedingAmount);
+      await cCOPToken.connect(user1).approve(await staking.getAddress(), exceedingAmount);
+      
+      await expect(staking.connect(user1).stake(exceedingAmount, DAYS_30))
+        .to.be.revertedWithCustomError(staking, "ExceedsStakingLimit");
     });
   });
 

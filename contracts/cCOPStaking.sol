@@ -44,10 +44,23 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     uint256 public constant MAX_STAKE_90 = 1177902918 * 1e18;
 
     // Tasas de interés (base 10000)
-    uint256 private constant RATE_30_DAYS = 125; // 1.25%
-    uint256 private constant RATE_60_DAYS = 150; // 1.50%
-    uint256 private constant RATE_90_DAYS = 200; // 2.00%
     uint256 private constant RATE_BASE = 10000;
+
+    // Errores personalizados
+    error InvalidDuration();
+    error InvalidStakeIndex();
+    error InvalidParameter();
+    error StakeAlreadyClaimed();
+    error StakeStillLocked();
+    error StakePeriodEnded();
+    error InvalidStakingPeriod();
+    error ExceedsStakingLimit();
+
+    // Nuevas variables para parámetros ajustables
+    uint256 public earlyWithdrawalPenalty = 20; // 20% por defecto
+    uint256 public stakingRate30Days = 125; // 1.25%
+    uint256 public stakingRate60Days = 150; // 1.50%
+    uint256 public stakingRate90Days = 200; // 2.00%
 
     // Eventos
     event Staked(address indexed user, uint256 amount, uint256 duration);
@@ -67,10 +80,8 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         address indexed oldGovernance,
         address indexed newGovernance
     );
-
-    // Errores personalizados
-    error InvalidStakingPeriod();
-    error ExceedsStakingLimit();
+    event RatesUpdated(uint256 rate30, uint256 rate60, uint256 rate90);
+    event PenaltyUpdated(uint256 newPenalty);
 
     /**
      * @dev Constructor del contrato.
@@ -134,9 +145,11 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      * @param _stakeIndex Índice del staking en el array del usuario.
      */
     function withdraw(uint256 _stakeIndex) external nonReentrant {
+        if (_stakeIndex >= stakes[msg.sender].length)
+            revert InvalidStakeIndex();
         Stake storage userStake = stakes[msg.sender][_stakeIndex];
-        require(!userStake.claimed, "Already claimed");
-        require(block.timestamp >= userStake.endTime, "Stake still locked");
+        if (userStake.claimed) revert StakeAlreadyClaimed();
+        if (block.timestamp < userStake.endTime) revert StakeStillLocked();
 
         uint256 rewards = calculateRewards(userStake);
         uint256 developerFee = (rewards * DEVELOPER_FEE_PERCENTAGE) /
@@ -160,16 +173,17 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      */
     function calculateRewards(
         Stake memory _stake
-    ) public pure returns (uint256) {
+    ) public view returns (uint256) {
         uint256 rate;
         if (_stake.duration == DAYS_30) {
-            rate = RATE_30_DAYS;
+            rate = stakingRate30Days;
         } else if (_stake.duration == DAYS_60) {
-            rate = RATE_60_DAYS;
+            rate = stakingRate60Days;
         } else if (_stake.duration == DAYS_90) {
-            rate = RATE_90_DAYS;
+            rate = stakingRate90Days;
+        } else {
+            revert InvalidDuration();
         }
-        // La división entera redondea hacia abajo
         return (_stake.amount * rate) / RATE_BASE;
     }
 
@@ -268,8 +282,8 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      * @dev Sólo puede ser ejecutada por el owner.
      * @param _newGovernance Nueva dirección de gobernanza (por ejemplo, un multisig).
      */
-    function updateGovernance(address _newGovernance) external onlyOwner {
-        require(_newGovernance != address(0), "Invalid governance address");
+    function updateGovernance(address _newGovernance) external onlyGovernance {
+        if (_newGovernance == address(0)) revert InvalidParameter();
         address oldGovernance = governance;
         governance = _newGovernance;
         emit GovernanceUpdated(oldGovernance, _newGovernance);
@@ -281,11 +295,13 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      * @param _stakeIndex Índice del staking en el array del usuario.
      */
     function earlyWithdraw(uint256 _stakeIndex) external nonReentrant {
+        if (_stakeIndex >= stakes[msg.sender].length)
+            revert InvalidStakeIndex();
         Stake storage userStake = stakes[msg.sender][_stakeIndex];
-        require(!userStake.claimed, "Already claimed");
-        require(block.timestamp < userStake.endTime, "Stake period ended");
+        if (userStake.claimed) revert StakeAlreadyClaimed();
+        if (block.timestamp >= userStake.endTime) revert StakePeriodEnded();
 
-        uint256 penalty = (userStake.amount * 20) / 100; // 20% de penalización
+        uint256 penalty = (userStake.amount * earlyWithdrawalPenalty) / 100;
         uint256 amountToReturn = userStake.amount - penalty;
 
         userStake.claimed = true;
@@ -301,5 +317,47 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
             penalty,
             amountToReturn
         );
+    }
+
+    // Nuevas funciones de gobernanza
+    function updateStakingRates(
+        uint256 _rate30,
+        uint256 _rate60,
+        uint256 _rate90
+    ) external onlyGovernance nonReentrant {
+        if (_rate30 == 0 || _rate60 == 0 || _rate90 == 0)
+            revert InvalidParameter();
+        stakingRate30Days = _rate30;
+        stakingRate60Days = _rate60;
+        stakingRate90Days = _rate90;
+        emit RatesUpdated(_rate30, _rate60, _rate90);
+    }
+
+    function updateEarlyWithdrawalPenalty(
+        uint256 _newPenalty
+    ) external onlyGovernance nonReentrant {
+        if (_newPenalty > 50) revert InvalidParameter(); // Máximo 50%
+        earlyWithdrawalPenalty = _newPenalty;
+        emit PenaltyUpdated(_newPenalty);
+    }
+
+    // Nueva función para recuperar tokens no reclamados
+    function sweepUnclaimedTokens(
+        uint256 _daysThreshold
+    ) external onlyGovernance nonReentrant {
+        uint256 threshold = block.timestamp - (_daysThreshold * 1 days);
+        uint256 totalUnclaimed = 0;
+        
+        for (uint256 i = 0; i < stakes[governance].length; i++) {
+            Stake storage userStake = stakes[governance][i];
+            if (!userStake.claimed && userStake.endTime < threshold) {
+                totalUnclaimed += userStake.amount;
+                userStake.claimed = true;
+            }
+        }
+        
+        if (totalUnclaimed > 0) {
+            cCOP.safeTransfer(governance, totalUnclaimed);
+        }
     }
 }
