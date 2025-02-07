@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>cCOP Staking</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>cCOP Staking</h1>
+            <div id="wallet-container">
+                <button id="connect-button">Conectar Wallet</button>
+                <div id="user-info" style="display: none;">
+                    <p id="wallet-address"></p>
+                    <div id="user-details"></div>
+                    <button id="disconnect-button">Desconectar</button>
+                </div>
+            </div>
+        </header>
+
+        <main id="staking-container" style="display: none;">
+            <section class="staking-form">
+                <h2>Nuevo Staking</h2>
+                <div class="form-group">
+                    <label for="amount">Cantidad:</label>
+                    <input type="number" id="amount" min="0" step="0.01">
+                </div>
+                <div class="form-group">
+                    <label for="duration">Duración (días):</label>
+                    <select id="duration">
+                        <option value="30">30 días</option>
+                        <option value="60">60 días</option>
+                        <option value="90">90 días</option>
+                    </select>
+                </div>
+                <button id="approve-button">Aprobar Tokens</button>
+                <button id="stake-button">Hacer Stake</button>
+            </section>
+
+            <section class="stakes-list">
+                <h2>Mis Stakes</h2>
+                <div class="stakes-summary">
+                    <div class="summary-item">
+                        <h3>Total Stakeado</h3>
+                        <p id="total-staked">0 cCOP</p>
+                    </div>
+                    <div class="summary-item">
+                        <h3>Recompensas Pendientes</h3>
+                        <p id="pending-rewards">0 cCOP</p>
+                    </div>
+                </div>
+                
+                <div class="stakes-filters">
+                    <select id="stakes-filter">
+                        <option value="all">Todos los Stakes</option>
+                        <option value="active">Stakes Activos</option>
+                        <option value="completed">Stakes Completados</option>
+                    </select>
+                </div>
+
+                <div id="stakes-container" class="stakes-grid">
+                    <!-- Template para cada stake -->
+                    <template id="stake-template">
+                        <div class="stake-card">
+                            <div class="stake-header">
+                                <h3>Stake #<span class="stake-id"></span></h3>
+                                <span class="stake-status"></span>
+                            </div>
+                            <div class="stake-info">
+                                <div class="info-row">
+                                    <span>Cantidad:</span>
+                                    <span class="stake-amount"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span>Inicio:</span>
+                                    <span class="stake-start"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span>Duración:</span>
+                                    <span class="stake-duration"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span>Finaliza:</span>
+                                    <span class="stake-end"></span>
+                                </div>
+                                <div class="info-row">
+                                    <span>APY:</span>
+                                    <span class="stake-apy"></span>
+                                </div>
+                                <div class="info-row rewards">
+                                    <span>Recompensas:</span>
+                                    <span class="stake-rewards"></span>
+                                </div>
+                            </div>
+                            <div class="stake-actions">
+                                <button class="unstake-button">Retirar Stake</button>
+                                <button class="claim-rewards-button">Reclamar Recompensas</button>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <div id="no-stakes-message" style="display: none;">
+                    <p>No tienes stakes activos. ¡Comienza a stakear tus cCOP ahora!</p>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" type="application/javascript"></script>
+    <script type="module" src="app.js"></script>
+</body>
+</html> 
