@@ -54,6 +54,12 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         address indexed oldWallet,
         address indexed newWallet
     );
+    event EarlyWithdrawn(
+        address indexed user,
+        uint256 originalAmount,
+        uint256 penalty,
+        uint256 withdrawnAmount
+    );
 
     // Errores personalizados
     error InvalidStakingPeriod();
@@ -216,5 +222,25 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         }
 
         return activeStakes;
+    }
+
+    /**
+     * @notice Permite a los usuarios retirar anticipadamente su staking con una penalización
+     * @param _stakeIndex Índice del staking en el array del usuario
+     */
+    function earlyWithdraw(uint256 _stakeIndex) external nonReentrant {
+        Stake storage userStake = stakes[msg.sender][_stakeIndex];
+        require(!userStake.claimed, "Already claimed");
+        require(block.timestamp < userStake.endTime, "Stake period ended");
+
+        uint256 penalty = (userStake.amount * 20) / 100; // 20% de penalización
+        uint256 amountToReturn = userStake.amount - penalty;
+
+        userStake.claimed = true;
+
+        // Transferir el monto menos la penalización al usuario
+        cCOP.safeTransfer(msg.sender, amountToReturn);
+
+        emit EarlyWithdrawn(msg.sender, userStake.amount, penalty, amountToReturn);
     }
 }

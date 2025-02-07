@@ -141,6 +141,66 @@ describe("cCOPStaking", function () {
           .to.be.revertedWith("Already claimed");
       });
     });
+
+    describe("Early Withdrawal", function () {
+      beforeEach(async function () {
+        this.stakeAmount = ethers.parseEther("1000");
+        // Guardar balance inicial
+        this.initialBalance = await cCOPToken.balanceOf(user1.address);
+        await staking.connect(user1).stake(this.stakeAmount, DAYS_30);
+      });
+
+      it("Debería aplicar penalización del 20% por retiro anticipado", async function () {
+        // Avanzar 15 días (mitad del período)
+        await time.increase(15 * 24 * 60 * 60);
+
+        const penalizacion = (this.stakeAmount * 20n) / 100n; // 20% de penalización
+        const montoEsperado = this.stakeAmount - penalizacion;
+
+        await expect(staking.connect(user1).earlyWithdraw(0))
+          .to.emit(staking, "EarlyWithdrawn")
+          .withArgs(user1.address, this.stakeAmount, penalizacion, montoEsperado);
+
+        // Verificar que el usuario recibió el monto correcto
+        const balanceFinal = await cCOPToken.balanceOf(user1.address);
+        // El balance final debe ser: balance inicial - monto stakeado + monto retornado
+        const balanceEsperado = this.initialBalance - this.stakeAmount + montoEsperado;
+        expect(balanceFinal).to.equal(balanceEsperado);
+      });
+
+      it("No debería permitir retiro anticipado después del período de bloqueo", async function () {
+        // Avanzar más allá del período de bloqueo
+        await time.increase(DAYS_30 + 1);
+
+        await expect(staking.connect(user1).earlyWithdraw(0))
+          .to.be.revertedWith("Stake period ended");
+      });
+
+      it("No debería permitir retiro anticipado si ya fue retirado", async function () {
+        await time.increase(15 * 24 * 60 * 60);
+        await staking.connect(user1).earlyWithdraw(0);
+
+        await expect(staking.connect(user1).earlyWithdraw(0))
+          .to.be.revertedWith("Already claimed");
+      });
+    });
+
+    describe("Rewards Calculation", function () {
+      it("Debería calcular correctamente las recompensas después del período completo", async function () {
+        const amount = ethers.parseEther("1000");
+        await staking.connect(user1).stake(amount, DAYS_30);
+        
+        await time.increase(DAYS_30);
+        
+        const expectedReward = (amount * 125n) / 10000n; // 1.25%
+        const developerFee = (expectedReward * 5n) / 100n;
+        const userReward = expectedReward - developerFee;
+
+        await expect(staking.connect(user1).withdraw(0))
+          .to.emit(staking, "Withdrawn")
+          .withArgs(user1.address, amount, userReward);
+      });
+    });
   });
 
   describe("View Functions", function () {
