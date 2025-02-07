@@ -5,8 +5,8 @@ import StakingABI from './abi/cCOPStaking.json';
 import TokenABI from './abi/ERC20.json';
 import './App.css';
 
-const STAKING_ADDRESS = "TU_DIRECCION_DEL_CONTRATO_STAKING";
-const TOKEN_ADDRESS = "TU_DIRECCION_DEL_TOKEN";
+const STAKING_ADDRESS = "0x33F9D44eef92314dAE345Aa64763B01cf484F3C6"; // Dirección del contrato de staking
+const TOKEN_ADDRESS = "0x8A567e2aE79CA692Bd748aB832081C45de4041eA"; // Dirección del token cCOP
 
 class StakingApp {
     constructor() {
