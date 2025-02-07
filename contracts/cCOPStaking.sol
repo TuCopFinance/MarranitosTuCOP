@@ -9,6 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 /**
  * @title cCOP Staking Contract
  * @dev Contrato de staking exclusivo para el token cCOP, con períodos de 30, 60 y 90 días.
+ * Se incluyen mejoras para gestionar arrays largos (paginación), separar funciones críticas mediante
+ * un mecanismo de gobernanza y documentar claramente el cálculo de recompensas y penalizaciones.
  * @author IntechChain
  */
 contract cCOPStaking is ReentrancyGuard, Ownable {
@@ -25,6 +27,7 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
 
     IERC20 public immutable cCOP; // Token cCOP
     address public developerWallet; // Wallet del desarrollador para recibir comisiones
+    address public governance; // Dirección de gobernanza (por ejemplo, multisig)
 
     mapping(address => Stake[]) public stakes; // Registro de stakes por usuario
 
@@ -60,6 +63,10 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         uint256 penalty,
         uint256 withdrawnAmount
     );
+    event GovernanceUpdated(
+        address indexed oldGovernance,
+        address indexed newGovernance
+    );
 
     // Errores personalizados
     error InvalidStakingPeriod();
@@ -76,6 +83,15 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
 
         cCOP = IERC20(_cCOP);
         developerWallet = _developerWallet;
+        governance = msg.sender;
+    }
+
+    /**
+     * @notice Modificador para funciones que sólo pueden ser ejecutadas por la gobernanza.
+     */
+    modifier onlyGovernance() {
+        require(msg.sender == governance, "Not authorized: only governance");
+        _;
     }
 
     /**
@@ -140,7 +156,7 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     /**
      * @notice Calcula las recompensas de un staking.
      * @param _stake Estructura de staking del usuario.
-     * @return Recompensa generada en cCOP.
+     * @return Recompensa generada en cCOP (redondeo hacia abajo debido a divisiones enteras).
      */
     function calculateRewards(
         Stake memory _stake
@@ -153,7 +169,7 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         } else if (_stake.duration == DAYS_90) {
             rate = RATE_90_DAYS;
         }
-
+        // La división entera redondea hacia abajo
         return (_stake.amount * rate) / RATE_BASE;
     }
 
@@ -183,36 +199,49 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Permite al owner retirar todos los fondos en caso de emergencia.
-     */
-    function emergencyWithdraw() external onlyOwner {
-        uint256 balance = cCOP.balanceOf(address(this));
-        cCOP.safeTransfer(owner(), balance);
-    }
-
-    /**
-     * @notice Permite actualizar la wallet del desarrollador.
-     * @param _newWallet Nueva dirección de la wallet del desarrollador.
-     */
-    function updateDeveloperWallet(address _newWallet) external onlyOwner {
-        require(_newWallet != address(0), "Invalid wallet address");
-        address oldWallet = developerWallet;
-        developerWallet = _newWallet;
-        emit DeveloperWalletUpdated(oldWallet, _newWallet);
-    }
-
-    /**
-     * @notice Obtiene el total de stakes activos de un usuario.
+     * @notice Obtiene una parte (paginada) de los stakes de un usuario.
      * @param _user Dirección del usuario.
-     * @return Número total de stakes activos.
+     * @param _offset Índice inicial desde el que se retornarán stakes.
+     * @param _limit Número máximo de stakes a retornar.
+     * @return Array de stakes correspondiente al rango solicitado.
      */
-    function getTotalActiveStakes(
-        address _user
-    ) external view returns (uint256) {
-        uint256 activeStakes = 0;
+    function getUserStakesPaginated(
+        address _user,
+        uint256 _offset,
+        uint256 _limit
+    ) external view returns (Stake[] memory) {
         Stake[] memory userStakes = stakes[_user];
+        uint256 total = userStakes.length;
+        if (_offset >= total) {
+            return new Stake[](0);
+        }
+        uint256 end = _offset + _limit;
+        if (end > total) {
+            end = total;
+        }
+        uint256 count = end - _offset;
+        Stake[] memory result = new Stake[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = userStakes[_offset + i];
+        }
+        return result;
+    }
 
-        for (uint256 i = 0; i < userStakes.length; i++) {
+    /**
+     * @notice Obtiene el número total de stakes activos en un rango paginado.
+     * @param _user Dirección del usuario.
+     * @param _offset Índice inicial en el array de stakes.
+     * @param _limit Número máximo de stakes a evaluar.
+     * @return activeStakes Número de stakes activos (no reclamados y aún bloqueados) en el rango.
+     */
+    function getTotalActiveStakesPaginated(
+        address _user,
+        uint256 _offset,
+        uint256 _limit
+    ) external view returns (uint256 activeStakes) {
+        Stake[] memory userStakes = stakes[_user];
+        uint256 total = userStakes.length;
+        for (uint256 i = _offset; i < total && i < _offset + _limit; i++) {
             if (
                 !userStakes[i].claimed &&
                 block.timestamp < userStakes[i].endTime
@@ -220,13 +249,36 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
                 activeStakes++;
             }
         }
-
-        return activeStakes;
     }
 
     /**
-     * @notice Permite a los usuarios retirar anticipadamente su staking con una penalización
-     * @param _stakeIndex Índice del staking en el array del usuario
+     * @notice Permite actualizar la wallet del desarrollador.
+     * @dev Sólo puede ser ejecutada por la gobernanza (por ejemplo, multisig).
+     * @param _newWallet Nueva dirección de la wallet del desarrollador.
+     */
+    function updateDeveloperWallet(address _newWallet) external onlyGovernance {
+        require(_newWallet != address(0), "Invalid wallet address");
+        address oldWallet = developerWallet;
+        developerWallet = _newWallet;
+        emit DeveloperWalletUpdated(oldWallet, _newWallet);
+    }
+
+    /**
+     * @notice Permite actualizar la dirección de gobernanza.
+     * @dev Sólo puede ser ejecutada por el owner.
+     * @param _newGovernance Nueva dirección de gobernanza (por ejemplo, un multisig).
+     */
+    function updateGovernance(address _newGovernance) external onlyOwner {
+        require(_newGovernance != address(0), "Invalid governance address");
+        address oldGovernance = governance;
+        governance = _newGovernance;
+        emit GovernanceUpdated(oldGovernance, _newGovernance);
+    }
+
+    /**
+     * @notice Permite a los usuarios retirar anticipadamente su staking con una penalización.
+     * La penalización del 20% se transfiere a la wallet del desarrollador.
+     * @param _stakeIndex Índice del staking en el array del usuario.
      */
     function earlyWithdraw(uint256 _stakeIndex) external nonReentrant {
         Stake storage userStake = stakes[msg.sender][_stakeIndex];
@@ -240,7 +292,14 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
 
         // Transferir el monto menos la penalización al usuario
         cCOP.safeTransfer(msg.sender, amountToReturn);
+        // Transferir la penalización a la wallet del desarrollador
+        cCOP.safeTransfer(developerWallet, penalty);
 
-        emit EarlyWithdrawn(msg.sender, userStake.amount, penalty, amountToReturn);
+        emit EarlyWithdrawn(
+            msg.sender,
+            userStake.amount,
+            penalty,
+            amountToReturn
+        );
     }
 }

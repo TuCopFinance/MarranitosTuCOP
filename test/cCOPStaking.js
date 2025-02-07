@@ -219,13 +219,13 @@ describe("cCOPStaking", function () {
     });
 
     it("Should return correct number of active stakes", async function () {
-      expect(await staking.getTotalActiveStakes(user1.address)).to.equal(2);
+      expect(await staking.getTotalActiveStakesPaginated(user1.address, 0, 10)).to.equal(2);
       
       // Avanzar tiempo y retirar un stake
       await time.increase(DAYS_30);
       await staking.connect(user1).withdraw(0);
       
-      expect(await staking.getTotalActiveStakes(user1.address)).to.equal(1);
+      expect(await staking.getTotalActiveStakesPaginated(user1.address, 0, 10)).to.equal(1);
     });
 
     it("Should calculate correct rewards for different periods", async function () {
@@ -260,7 +260,7 @@ describe("cCOPStaking", function () {
   });
 
   describe("Admin Functions", function () {
-    it("Should allow owner to update developer wallet", async function () {
+    it("Should allow governance to update developer wallet", async function () {
       await expect(staking.connect(owner).updateDeveloperWallet(user2.address))
         .to.emit(staking, "DeveloperWalletUpdated")
         .withArgs(developer.address, user2.address);
@@ -268,41 +268,101 @@ describe("cCOPStaking", function () {
       expect(await staking.developerWallet()).to.equal(user2.address);
     });
 
-    it("Should not allow non-owner to update developer wallet", async function () {
+    it("Should not allow non-governance to update developer wallet", async function () {
       await expect(staking.connect(user1).updateDeveloperWallet(user2.address))
-        .to.be.revertedWithCustomError(staking, "OwnableUnauthorizedAccount")
-        .withArgs(user1.address);
+        .to.be.revertedWith("Not authorized: only governance");
     });
 
     it("Should not allow updating developer wallet to zero address", async function () {
       await expect(staking.connect(owner).updateDeveloperWallet(ethers.ZeroAddress))
         .to.be.revertedWith("Invalid wallet address");
     });
+  });
 
-    it("Should allow owner to emergency withdraw", async function () {
-      const amount = ethers.parseEther("1000");
-      const stakingAddress = await staking.getAddress();
+  describe("Governance", function () {
+    it("Should set initial governance to deployer", async function () {
+      expect(await staking.governance()).to.equal(owner.address);
+    });
+
+    it("Should allow owner to update governance", async function () {
+      await expect(staking.connect(owner).updateGovernance(user2.address))
+        .to.emit(staking, "GovernanceUpdated")
+        .withArgs(owner.address, user2.address);
+      expect(await staking.governance()).to.equal(user2.address);
+    });
+
+    it("Should not allow non-owner to update governance", async function () {
+      await expect(staking.connect(user1).updateGovernance(user2.address))
+        .to.be.revertedWithCustomError(staking, "OwnableUnauthorizedAccount")
+        .withArgs(user1.address);
+    });
+  });
+
+  describe("Paginación", function () {
+    beforeEach(async function () {
+      // Crear múltiples stakes para probar paginación
+      for (let i = 0; i < 5; i++) {
+        await staking.connect(user1).stake(ethers.parseEther("1000"), DAYS_30);
+      }
+    });
+
+    it("Should return correct paginated stakes", async function () {
+      const stakes = await staking.getUserStakesPaginated(user1.address, 1, 2);
+      expect(stakes.length).to.equal(2);
+    });
+
+    it("Should return correct number of active stakes with pagination", async function () {
+      const activeStakes = await staking.getTotalActiveStakesPaginated(user1.address, 0, 3);
+      expect(activeStakes).to.equal(3);
+    });
+
+    it("Should handle pagination bounds correctly", async function () {
+      const emptyStakes = await staking.getUserStakesPaginated(user1.address, 10, 2);
+      expect(emptyStakes.length).to.equal(0);
+    });
+  });
+
+  describe("Developer Wallet Management", function () {
+    it("Should only allow governance to update developer wallet", async function () {
+      await expect(staking.connect(user1).updateDeveloperWallet(user2.address))
+        .to.be.revertedWith("Not authorized: only governance");
       
-      // Obtener balance inicial
-      const initialBalance = await cCOPToken.balanceOf(stakingAddress);
-      
-      // Hacer stake
-      await staking.connect(user1).stake(amount, DAYS_30);
-      
-      // Verificar que el emergency withdraw transfiere todo el balance
-      const finalBalance = await cCOPToken.balanceOf(stakingAddress);
-      await expect(staking.connect(owner).emergencyWithdraw())
+      await expect(staking.connect(owner).updateDeveloperWallet(user2.address))
+        .to.emit(staking, "DeveloperWalletUpdated")
+        .withArgs(developer.address, user2.address);
+    });
+  });
+
+  describe("Early Withdrawal with Developer Fee", function () {
+    beforeEach(async function () {
+      this.stakeAmount = ethers.parseEther("1000");
+      this.initialBalance = await cCOPToken.balanceOf(user1.address);
+      await staking.connect(user1).stake(this.stakeAmount, DAYS_30);
+    });
+
+    it("Should transfer correct amounts during early withdrawal", async function () {
+      await time.increase(15 * 24 * 60 * 60);
+      const penalty = (this.stakeAmount * 20n) / 100n; // 20% de penalización
+      const amountToReturn = this.stakeAmount - penalty;
+
+      // Verificar solo los cambios de balance
+      await expect(staking.connect(user1).earlyWithdraw(0))
         .to.changeTokenBalances(
           cCOPToken,
-          [staking, owner],
-          [-finalBalance, finalBalance]
+          [user1, developer, staking],
+          [amountToReturn, penalty, -this.stakeAmount]
         );
     });
 
-    it("Should not allow non-owner to emergency withdraw", async function () {
-      await expect(staking.connect(user1).emergencyWithdraw())
-        .to.be.revertedWithCustomError(staking, "OwnableUnauthorizedAccount")
-        .withArgs(user1.address);
+    it("Should emit correct event during early withdrawal", async function () {
+      await time.increase(15 * 24 * 60 * 60);
+      const penalty = (this.stakeAmount * 20n) / 100n; // 20% de penalización
+      const amountToReturn = this.stakeAmount - penalty;
+
+      // Verificar solo el evento
+      await expect(staking.connect(user1).earlyWithdraw(0))
+        .to.emit(staking, "EarlyWithdrawn")
+        .withArgs(user1.address, this.stakeAmount, penalty, amountToReturn);
     });
   });
 });

@@ -1,6 +1,5 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
-require("hardhat-celo");
 
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 const CELO_RPC_URL = process.env.CELO_RPC_URL;
@@ -31,9 +30,28 @@ module.exports = {
       chainId: 44787,
     }
   },
-  verify: {
-    etherscan: {
-      apiKey: CELOSCAN_API_KEY
-    }
+  etherscan: {
+    apiKey: {
+      celo: CELOSCAN_API_KEY,
+      alfajores: CELOSCAN_API_KEY
+    },
+    customChains: [
+      {
+        network: "celo",
+        chainId: 42220,
+        urls: {
+          apiURL: "https://api.celoscan.io/api",
+          browserURL: "https://celoscan.io"
+        }
+      },
+      {
+        network: "alfajores",
+        chainId: 44787,
+        urls: {
+          apiURL: "https://api-alfajores.celoscan.io/api",
+          browserURL: "https://alfajores.celoscan.io"
+        }
+      }
+    ]
   }
 };
