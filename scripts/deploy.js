@@ -24,20 +24,25 @@ async function main() {
 
   console.log("cCOPStaking desplegado en:", await cCOPStaking.getAddress());
 
-  // Esperar para la verificación
-  console.log("Esperando 5 bloques para la verificación...");
-  await cCOPStaking.deploymentTransaction().wait(5);
+  // Solo verificar si no estamos en la red local
+  if (network.name !== "hardhat" && network.name !== "localhost") {
+    // Esperar para la verificación
+    console.log("Esperando 5 bloques para la verificación...");
+    await cCOPStaking.deploymentTransaction().wait(5);
 
-  // Verificar el contrato
-  console.log("Verificando contrato...");
-  try {
-    await hre.run("verify:verify", {
-      address: await cCOPStaking.getAddress(),
-      constructorArguments: [cCOPAddress, developerWallet],
-    });
-    console.log("Contrato verificado exitosamente");
-  } catch (error) {
-    console.error("Error en la verificación:", error);
+    // Verificar el contrato
+    console.log("Verificando contrato...");
+    try {
+      await hre.run("verify:verify", {
+        address: await cCOPStaking.getAddress(),
+        constructorArguments: [cCOPAddress, developerWallet],
+      });
+      console.log("Contrato verificado exitosamente");
+    } catch (error) {
+      console.error("Error en la verificación:", error);
+    }
+  } else {
+    console.log("Saltando verificación en red local");
   }
 }
 
