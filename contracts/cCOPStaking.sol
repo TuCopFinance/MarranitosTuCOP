@@ -55,12 +55,19 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     error StakePeriodEnded();
     error InvalidStakingPeriod();
     error ExceedsStakingLimit();
+    error NotWhitelisted();
 
     // Nuevas variables para parámetros ajustables
     uint256 public earlyWithdrawalPenalty = 20; // 20% por defecto
     uint256 public stakingRate30Days = 125; // 1.25%
     uint256 public stakingRate60Days = 150; // 1.50%
     uint256 public stakingRate90Days = 200; // 2.00%
+
+    // Agregar nuevo mapping para la lista blanca
+    mapping(address => bool) public whitelisted;
+    
+    // Nuevo evento
+    event WhitelistUpdated(address indexed user, bool status);
 
     // Eventos
     event Staked(address indexed user, uint256 amount, uint256 duration);
@@ -106,11 +113,19 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     }
 
     /**
+     * @notice Modificador para verificar si una dirección está en la lista blanca
+     */
+    modifier onlyWhitelisted() {
+        if (!whitelisted[msg.sender]) revert NotWhitelisted();
+        _;
+    }
+
+    /**
      * @notice Permite a los usuarios hacer staking de cCOP.
      * @param _amount Cantidad de cCOP a hacer stake.
      * @param _duration Duración del staking (30, 60 o 90 días).
      */
-    function stake(uint256 _amount, uint256 _duration) external nonReentrant {
+    function stake(uint256 _amount, uint256 _duration) external nonReentrant onlyWhitelisted {
         if (
             _duration != DAYS_30 && _duration != DAYS_60 && _duration != DAYS_90
         ) {
@@ -358,6 +373,38 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         
         if (totalUnclaimed > 0) {
             cCOP.safeTransfer(governance, totalUnclaimed);
+        }
+    }
+
+    /**
+     * @notice Agrega una dirección a la lista blanca
+     * @param _user Dirección a agregar
+     */
+    function addToWhitelist(address _user) external onlyGovernance {
+        if (_user == address(0)) revert InvalidParameter();
+        whitelisted[_user] = true;
+        emit WhitelistUpdated(_user, true);
+    }
+
+    /**
+     * @notice Elimina una dirección de la lista blanca
+     * @param _user Dirección a eliminar
+     */
+    function removeFromWhitelist(address _user) external onlyGovernance {
+        if (_user == address(0)) revert InvalidParameter();
+        whitelisted[_user] = false;
+        emit WhitelistUpdated(_user, false);
+    }
+
+    /**
+     * @notice Agrega múltiples direcciones a la lista blanca
+     * @param _users Array de direcciones a agregar
+     */
+    function addMultipleToWhitelist(address[] calldata _users) external onlyGovernance {
+        for (uint256 i = 0; i < _users.length; i++) {
+            if (_users[i] == address(0)) revert InvalidParameter();
+            whitelisted[_users[i]] = true;
+            emit WhitelistUpdated(_users[i], true);
         }
     }
 }
