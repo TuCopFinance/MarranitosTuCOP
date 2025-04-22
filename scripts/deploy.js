@@ -4,6 +4,9 @@ async function main() {
   // Obtener las variables de entorno
   const developerWallet = process.env.DEVELOPER_WALLET;
   const cCOPAddress = process.env.CCOP_TOKEN_ADDRESS;
+  
+  // Obtener la información de la red
+  const network = hre.network;
 
   if (!developerWallet || !cCOPAddress) {
     throw new Error("Falta configurar DEVELOPER_WALLET o CCOP_TOKEN_ADDRESS en el archivo .env");
@@ -14,11 +17,17 @@ async function main() {
   console.log("Developer Wallet:", developerWallet);
   console.log("Token cCOP:", cCOPAddress);
 
+  // Configurar opciones de gas
+  const deployOptions = {
+    gasLimit: 10000000, // Límite de gas mucho más alto
+    gasPrice: 50000000000 // Precio de gas explícito (50 Gwei)
+  };
+
   // Desplegar el contrato
   const cCOPStaking = await hre.ethers.deployContract("cCOPStaking", [
     cCOPAddress,
     developerWallet
-  ]);
+  ], deployOptions);
 
   await cCOPStaking.waitForDeployment();
 

@@ -37,7 +37,7 @@ module.exports = {
       url: CELO_RPC_URL || "https://forno.celo.org",
       accounts: PRIVATE_KEY ? [PRIVATE_KEY] : [],
       chainId: 42220,
-      gasPrice: 1000000000
+      gasPrice: 50000000000
     },
     alfajores: {
       url: ALFAJORES_RPC_URL || "https://alfajores-forno.celo-testnet.org",
