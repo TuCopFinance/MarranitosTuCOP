@@ -49,6 +49,7 @@ contract DispersionContract is Ownable, ReentrancyGuard {
         require(_token != address(0), "Invalid token address");
         require(_governance != address(0), "Invalid governance address");
         require(_fixedAmount > 0, "Invalid fixed amount");
+        require(_dispersion != address(0), "Invalid dispersion address");
 
         token = IERC20(_token);
         governance = _governance;
