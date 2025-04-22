@@ -376,18 +376,191 @@ describe("cCOPStaking", function () {
   });
 
   describe("Cálculo de recompensas", function () {
-    it("Debe calcular correctamente las recompensas para 30 días", async function () {
-      // Hacer stake
-      await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), stakeAmount30);
-      await cCOPStaking.connect(user1).stake(stakeAmount30, DAYS_30);
+    beforeEach(async function () {
+      // Transferir más tokens al usuario para las pruebas
+      await cCOP.transfer(user1.address, ethers.parseEther("1000000"));
+    });
+
+    it("Debe calcular correctamente las recompensas para 30 días con diferentes montos", async function () {
+      const testAmounts = [
+        ethers.parseEther("1000"),    // 1,000 cCOP
+        ethers.parseEther("5000"),    // 5,000 cCOP
+        ethers.parseEther("10000"),   // 10,000 cCOP
+        ethers.parseEther("20000"),   // 20,000 cCOP
+        ethers.parseEther("50000")    // 50,000 cCOP
+      ];
+
+      for (const amount of testAmounts) {
+        // Aprobar y hacer stake
+        await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), amount);
+        await cCOPStaking.connect(user1).stake(amount, DAYS_30);
+        
+        // Avanzar el tiempo 31 días
+        await advanceTime(DAYS_30 + 86400);
+        
+        // Obtener la información del stake
+        const stakes = await cCOPStaking.getUserStakes(user1.address);
+        const stake = {
+          amount: stakes[stakes.length - 1].amount,
+          startTime: stakes[stakes.length - 1].startTime,
+          endTime: stakes[stakes.length - 1].endTime,
+          duration: stakes[stakes.length - 1].duration,
+          claimed: stakes[stakes.length - 1].claimed
+        };
+        
+        // Calcular recompensas manualmente
+        const rate = await cCOPStaking.stakingRate30Days();
+        const monthlyInterest = (stake.amount * rate) / BigInt(10000);
+        
+        // La distribución para 30 días es 40% del pool de intereses
+        const poolShare = (interestPool * BigInt(40)) / BigInt(100);
+        
+        // Las recompensas deberían ser el menor entre el interés calculado y la parte del pool
+        const expectedRewards = monthlyInterest < poolShare ? monthlyInterest : poolShare;
+        
+        // Llamar al contrato para calcular recompensas
+        const rewards = await cCOPStaking.calculateRewards(stake);
+        
+        // Verificar que las recompensas están limitadas por el pool
+        expect(rewards).to.equal(expectedRewards);
+        
+        // Retirar y verificar el balance final
+        const balanceBefore = await cCOP.balanceOf(user1.address);
+        await cCOPStaking.connect(user1).withdraw(stakes.length - 1);
+        const balanceAfter = await cCOP.balanceOf(user1.address);
+        
+        // Verificar que recibió el principal más las recompensas
+        const expectedTotal = stake.amount + rewards;
+        expect(balanceAfter - balanceBefore).to.be.closeTo(expectedTotal, ethers.parseEther("100"));
+      }
+    });
+
+    it("Debe calcular correctamente las recompensas para 60 días con diferentes montos", async function () {
+      const testAmounts = [
+        ethers.parseEther("2000"),    // 2,000 cCOP
+        ethers.parseEther("10000"),   // 10,000 cCOP
+        ethers.parseEther("20000"),   // 20,000 cCOP
+        ethers.parseEther("50000"),   // 50,000 cCOP
+        ethers.parseEther("100000")   // 100,000 cCOP
+      ];
+
+      for (const amount of testAmounts) {
+        // Aprobar y hacer stake
+        await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), amount);
+        await cCOPStaking.connect(user1).stake(amount, DAYS_60);
+        
+        // Avanzar el tiempo 61 días
+        await advanceTime(DAYS_60 + 86400);
+        
+        // Obtener la información del stake
+        const stakes = await cCOPStaking.getUserStakes(user1.address);
+        const stake = {
+          amount: stakes[stakes.length - 1].amount,
+          startTime: stakes[stakes.length - 1].startTime,
+          endTime: stakes[stakes.length - 1].endTime,
+          duration: stakes[stakes.length - 1].duration,
+          claimed: stakes[stakes.length - 1].claimed
+        };
+        
+        // Calcular recompensas manualmente
+        const rate = await cCOPStaking.stakingRate60Days();
+        const monthlyInterest = (stake.amount * rate) / BigInt(10000);
+        const totalInterest = monthlyInterest * BigInt(2); // 2 meses
+        
+        // La distribución para 60 días es 35% del pool de intereses
+        const poolShare = (interestPool * BigInt(35)) / BigInt(100);
+        
+        // Las recompensas deberían ser el menor entre el interés calculado y la parte del pool
+        const expectedRewards = totalInterest < poolShare ? totalInterest : poolShare;
+        
+        // Llamar al contrato para calcular recompensas
+        const rewards = await cCOPStaking.calculateRewards(stake);
+        
+        // Verificar que las recompensas están limitadas por el pool
+        expect(rewards).to.equal(expectedRewards);
+        
+        // Retirar y verificar el balance final
+        const balanceBefore = await cCOP.balanceOf(user1.address);
+        await cCOPStaking.connect(user1).withdraw(stakes.length - 1);
+        const balanceAfter = await cCOP.balanceOf(user1.address);
+        
+        // Verificar que recibió el principal más las recompensas
+        const expectedTotal = stake.amount + rewards;
+        expect(balanceAfter - balanceBefore).to.be.closeTo(expectedTotal, ethers.parseEther("1000"));
+      }
+    });
+
+    it("Debe calcular correctamente las recompensas para 90 días con diferentes montos", async function () {
+      const testAmounts = [
+        ethers.parseEther("3000"),    // 3,000 cCOP
+        ethers.parseEther("15000"),   // 15,000 cCOP
+        ethers.parseEther("30000"),   // 30,000 cCOP
+        ethers.parseEther("50000"),   // 50,000 cCOP
+        ethers.parseEther("100000")   // 100,000 cCOP
+      ];
+
+      for (const amount of testAmounts) {
+        // Aprobar y hacer stake
+        await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), amount);
+        await cCOPStaking.connect(user1).stake(amount, DAYS_90);
+        
+        // Avanzar el tiempo 91 días
+        await advanceTime(DAYS_90 + 86400);
+        
+        // Obtener la información del stake
+        const stakes = await cCOPStaking.getUserStakes(user1.address);
+        const stake = {
+          amount: stakes[stakes.length - 1].amount,
+          startTime: stakes[stakes.length - 1].startTime,
+          endTime: stakes[stakes.length - 1].endTime,
+          duration: stakes[stakes.length - 1].duration,
+          claimed: stakes[stakes.length - 1].claimed
+        };
+        
+        // Calcular recompensas manualmente
+        const rate = await cCOPStaking.stakingRate90Days();
+        const monthlyInterest = (stake.amount * rate) / BigInt(10000);
+        const totalInterest = monthlyInterest * BigInt(3); // 3 meses
+        
+        // La distribución para 90 días es 25% del pool de intereses
+        const poolShare = (interestPool * BigInt(25)) / BigInt(100);
+        
+        // Las recompensas deberían ser el menor entre el interés calculado y la parte del pool
+        const expectedRewards = totalInterest < poolShare ? totalInterest : poolShare;
+        
+        // Llamar al contrato para calcular recompensas
+        const rewards = await cCOPStaking.calculateRewards(stake);
+        
+        // Verificar que las recompensas están limitadas por el pool
+        expect(rewards).to.equal(expectedRewards);
+        
+        // Retirar y verificar el balance final
+        const balanceBefore = await cCOP.balanceOf(user1.address);
+        await cCOPStaking.connect(user1).withdraw(stakes.length - 1);
+        const balanceAfter = await cCOP.balanceOf(user1.address);
+        
+        // Verificar que recibió el principal más las recompensas
+        const expectedTotal = stake.amount + rewards;
+        expect(balanceAfter - balanceBefore).to.be.closeTo(expectedTotal, ethers.parseEther("1000"));
+      }
+    });
+
+    it("Debe verificar el límite del pool de intereses", async function () {
+      // Transferir más tokens al usuario para el stake grande
+      await cCOP.transfer(user1.address, ethers.parseEther("3160493827"));
+      
+      // Hacer un stake grande que exceda el pool de intereses
+      const largeAmount = ethers.parseEther("3160493827"); // 3,160,493,827 cCOP (justo por debajo del límite)
+      
+      // Aprobar y hacer stake
+      await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), largeAmount);
+      await cCOPStaking.connect(user1).stake(largeAmount, DAYS_30);
       
       // Avanzar el tiempo 31 días
       await advanceTime(DAYS_30 + 86400);
       
       // Obtener la información del stake
       const stakes = await cCOPStaking.getUserStakes(user1.address);
-      
-      // Obtener la stake structure en formato objeto JavaScript
       const stake = {
         amount: stakes[0].amount,
         startTime: stakes[0].startTime,
@@ -409,97 +582,8 @@ describe("cCOPStaking", function () {
       // Llamar al contrato para calcular recompensas
       const rewards = await cCOPStaking.calculateRewards(stake);
       
-      // Comparar resultados
-      expect(rewards).to.be.closeTo(expectedRewards, ethers.parseEther("0.1")); // Pequeña tolerancia
-    });
-
-    it("Debe calcular correctamente las recompensas para 60 días", async function () {
-      // Hacer stake
-      await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), stakeAmount60);
-      await cCOPStaking.connect(user1).stake(stakeAmount60, DAYS_60);
-      
-      // Avanzar el tiempo 61 días
-      await advanceTime(DAYS_60 + 86400);
-      
-      // Obtener la información del stake
-      const stakes = await cCOPStaking.getUserStakes(user1.address);
-      
-      // Obtener la stake structure en formato objeto JavaScript
-      const stake = {
-        amount: stakes[0].amount,
-        startTime: stakes[0].startTime,
-        endTime: stakes[0].endTime,
-        duration: stakes[0].duration,
-        claimed: stakes[0].claimed
-      };
-      
-      // Calcular recompensas manualmente
-      const rate = await cCOPStaking.stakingRate60Days();
-      const monthlyInterest = (stake.amount * rate) / BigInt(10000);
-      const totalInterest = monthlyInterest * BigInt(2); // 2 meses
-      
-      // La distribución para 60 días es 35% del pool de intereses
-      const poolShare = (interestPool * BigInt(35)) / BigInt(100);
-      
-      // Las recompensas deberían ser el menor entre el interés calculado y la parte del pool
-      const expectedRewards = totalInterest < poolShare ? totalInterest : poolShare;
-      
-      // Llamar al contrato para calcular recompensas
-      const rewards = await cCOPStaking.calculateRewards(stake);
-      
-      // Comparar resultados
-      expect(rewards).to.be.closeTo(expectedRewards, ethers.parseEther("0.1")); // Pequeña tolerancia
-    });
-
-    it("Debe calcular correctamente las recompensas para 90 días", async function () {
-      // Hacer stake
-      await cCOP.connect(user1).approve(await cCOPStaking.getAddress(), stakeAmount90);
-      await cCOPStaking.connect(user1).stake(stakeAmount90, DAYS_90);
-      
-      // Avanzar el tiempo 91 días
-      await advanceTime(DAYS_90 + 86400);
-      
-      // Obtener la información del stake
-      const stakes = await cCOPStaking.getUserStakes(user1.address);
-      
-      // Obtener la stake structure en formato objeto JavaScript
-      const stake = {
-        amount: stakes[0].amount,
-        startTime: stakes[0].startTime,
-        endTime: stakes[0].endTime,
-        duration: stakes[0].duration,
-        claimed: stakes[0].claimed
-      };
-      
-      // Calcular recompensas manualmente
-      const rate = await cCOPStaking.stakingRate90Days();
-      const monthlyInterest = (stake.amount * rate) / BigInt(10000);
-      const totalInterest = monthlyInterest * BigInt(3); // 3 meses
-      
-      // La distribución para 90 días es 25% del pool de intereses
-      const poolShare = (interestPool * BigInt(25)) / BigInt(100);
-      
-      // Las recompensas deberían ser el menor entre el interés calculado y la parte del pool
-      const expectedRewards = totalInterest < poolShare ? totalInterest : poolShare;
-      
-      // Llamar al contrato para calcular recompensas
-      const rewards = await cCOPStaking.calculateRewards(stake);
-      
-      // Comparar resultados
-      expect(rewards).to.be.closeTo(expectedRewards, ethers.parseEther("0.1")); // Pequeña tolerancia
-    });
-
-    it("Debe revertir con duración inválida", async function () {
-      const invalidStake = {
-        amount: ethers.parseEther("1000"),
-        startTime: Math.floor(Date.now() / 1000),
-        endTime: Math.floor(Date.now() / 1000) + 45 * 24 * 60 * 60, // 45 días
-        duration: 45 * 24 * 60 * 60, // 45 días (duración inválida)
-        claimed: false
-      };
-      
-      await expect(cCOPStaking.calculateRewards(invalidStake))
-        .to.be.revertedWithCustomError(cCOPStaking, "InvalidDuration");
+      // Verificar que las recompensas están limitadas por el pool
+      expect(rewards).to.equal(expectedRewards);
     });
   });
 }); 

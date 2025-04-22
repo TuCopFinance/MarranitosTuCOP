@@ -64,6 +64,9 @@ contract DispersionContract is Ownable, ReentrancyGuard {
         _;
     }
 
+    /**
+     * @dev Modificador para verificar que el llamante es el contrato de dispersión
+     */
     modifier onlyDispersion() {
         require(msg.sender == dispersion, "Not authorized: only dispersion");
         _;

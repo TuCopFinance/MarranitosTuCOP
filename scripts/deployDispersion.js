@@ -35,7 +35,7 @@ async function main() {
     console.log("Verificando contrato...");
     await hre.run("verify:verify", {
       address: dispersionAddress,
-      constructorArguments: [tokenAddress, governanceAddress, fixedAmount],
+      constructorArguments: [tokenAddress, governanceAddress, fixedAmount, dispersionAddress],
     });
     console.log("Contrato verificado");
   }
