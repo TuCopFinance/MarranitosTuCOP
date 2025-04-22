@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title DispersionContract
- * @dev Contrato para dispersar una cantidad fija de ETH a una dirección específica
+ * @dev Contrato para dispersar una cantidad fija de CELO a una dirección específica
  * con autorización de gobernanza.
  */
 contract DispersionContract is ReentrancyGuard {
@@ -19,18 +19,23 @@ contract DispersionContract is ReentrancyGuard {
     uint256 public fixedAmount;
 
     // Eventos
-    event EthDispersed(address indexed recipient, uint256 amount);
+    event CeloDispersed(address indexed recipient, uint256 amount);
     event GovernanceUpdated(
         address indexed oldGovernance,
         address indexed newGovernance
     );
+    event DispersionUpdated(
+        address indexed oldDispersion,
+        address indexed newDispersion
+    );
     event FixedAmountUpdated(uint256 oldAmount, uint256 newAmount);
+    event CeloWithdrawn(address indexed recipient, uint256 amount);
 
     /**
      * @dev Constructor del contrato
      * @param _governance Dirección del contrato de gobernanza
      * @param _dispersion Dirección del contrato de dispersión
-     * @param _fixedAmount Cantidad fija de ETH a dispersar
+     * @param _fixedAmount Cantidad fija de CELO a dispersar
      */
     constructor(
         address _governance,
@@ -63,10 +68,10 @@ contract DispersionContract is ReentrancyGuard {
     }
 
     /**
-     * @dev Dispersa la cantidad fija de ETH a una dirección específica
-     * @param _recipient Dirección que recibirá el ETH
+     * @dev Dispersa la cantidad fija de CELO a una dirección específica
+     * @param _recipient Dirección que recibirá el CELO
      */
-    function disperseEth(
+    function disperseCelo(
         address _recipient
     ) external onlyDispersion nonReentrant {
         // Verificar balance del contrato
@@ -75,11 +80,11 @@ contract DispersionContract is ReentrancyGuard {
             "Insufficient contract balance"
         );
 
-        // Transferir ETH al destinatario
+        // Transferir CELO al destinatario
         (bool success, ) = _recipient.call{value: fixedAmount}("");
-        require(success, "ETH transfer failed");
+        require(success, "CELO transfer failed");
 
-        emit EthDispersed(_recipient, fixedAmount);
+        emit CeloDispersed(_recipient, fixedAmount);
     }
 
     /**
@@ -99,8 +104,24 @@ contract DispersionContract is ReentrancyGuard {
     }
 
     /**
-     * @dev Permite al governance actualizar la cantidad fija de ETH a dispersar
-     * @param _newFixedAmount Nueva cantidad fija de ETH
+     * @dev Permite al governance actualizar la dirección de dispersión
+     * @param _newDispersion Nueva dirección que tendrá el rol de dispersión
+     */
+    function updateDispersion(
+        address _newDispersion
+    ) external onlyGovernance {
+        require(_newDispersion != address(0), "Invalid dispersion address");
+        require(_newDispersion != dispersion, "New dispersion same as current");
+
+        address oldDispersion = dispersion;
+        dispersion = _newDispersion;
+
+        emit DispersionUpdated(oldDispersion, _newDispersion);
+    }
+
+    /**
+     * @dev Permite al governance actualizar la cantidad fija de CELO a dispersar
+     * @param _newFixedAmount Nueva cantidad fija de CELO
      */
     function updateFixedAmount(
         uint256 _newFixedAmount
@@ -113,6 +134,19 @@ contract DispersionContract is ReentrancyGuard {
         emit FixedAmountUpdated(oldAmount, _newFixedAmount);
     }
 
-    // Función para recibir ETH
+    /**
+     * @dev Permite al governance retirar todo el CELO del contrato
+     */
+    function withdrawCelo() external onlyGovernance nonReentrant {
+        uint256 balance = address(this).balance;
+        require(balance > 0, "No CELO to withdraw");
+
+        (bool success, ) = governance.call{value: balance}("");
+        require(success, "CELO transfer failed");
+
+        emit CeloWithdrawn(governance, balance);
+    }
+
+    // Función para recibir CELO
     receive() external payable {}
 }

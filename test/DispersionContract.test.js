@@ -8,8 +8,8 @@ describe("DispersionContract", function () {
   let user1;
   let user2;
   
-  const fixedAmount = ethers.parseEther("1"); // 1 ETH
-  const testAmount = ethers.parseEther("2"); // 2 ETH para pruebas
+  const fixedAmount = ethers.parseEther("1"); // 1 CELO
+  const testAmount = ethers.parseEther("2"); // 2 CELO para pruebas
 
   beforeEach(async function () {
     // Obtener las cuentas de prueba
@@ -23,7 +23,7 @@ describe("DispersionContract", function () {
       fixedAmount
     );
     
-    // Enviar ETH al contrato
+    // Enviar CELO al contrato
     await governance.sendTransaction({
       to: await dispersionContract.getAddress(),
       value: testAmount
@@ -62,34 +62,90 @@ describe("DispersionContract", function () {
     });
   });
 
-  describe("Dispersión de ETH", function () {
-    it("Debe permitir a la dirección de dispersión dispersar ETH", async function () {
+  describe("Dispersión de CELO", function () {
+    it("Debe permitir a la dirección de dispersión dispersar CELO", async function () {
       const balanceBefore = await ethers.provider.getBalance(user1.address);
       
-      await dispersionContract.connect(dispersion).disperseEth(user1.address);
+      await dispersionContract.connect(dispersion).disperseCelo(user1.address);
       
       const balanceAfter = await ethers.provider.getBalance(user1.address);
       expect(balanceAfter - balanceBefore).to.equal(fixedAmount);
     });
 
-    it("Debe emitir evento EthDispersed", async function () {
-      await expect(dispersionContract.connect(dispersion).disperseEth(user1.address))
-        .to.emit(dispersionContract, "EthDispersed")
+    it("Debe emitir evento CeloDispersed", async function () {
+      await expect(dispersionContract.connect(dispersion).disperseCelo(user1.address))
+        .to.emit(dispersionContract, "CeloDispersed")
         .withArgs(user1.address, fixedAmount);
     });
 
     it("Debe revertir si el balance es insuficiente", async function () {
       // Agotar el balance del contrato
-      await dispersionContract.connect(dispersion).disperseEth(user1.address);
-      await dispersionContract.connect(dispersion).disperseEth(user1.address);
+      await dispersionContract.connect(dispersion).disperseCelo(user1.address);
+      await dispersionContract.connect(dispersion).disperseCelo(user1.address);
       
-      await expect(dispersionContract.connect(dispersion).disperseEth(user1.address))
+      await expect(dispersionContract.connect(dispersion).disperseCelo(user1.address))
         .to.be.revertedWith("Insufficient contract balance");
     });
 
     it("Debe revertir si el llamante no es la dirección de dispersión", async function () {
-      await expect(dispersionContract.connect(user1).disperseEth(user2.address))
+      await expect(dispersionContract.connect(user1).disperseCelo(user2.address))
         .to.be.revertedWith("Not authorized: only dispersion");
+    });
+  });
+
+  describe("Actualización de dirección de dispersión", function () {
+    it("Debe permitir al governance actualizar la dirección de dispersión", async function () {
+      await expect(dispersionContract.connect(governance).updateDispersion(user1.address))
+        .to.emit(dispersionContract, "DispersionUpdated")
+        .withArgs(dispersion.address, user1.address);
+      
+      expect(await dispersionContract.dispersion()).to.equal(user1.address);
+    });
+
+    it("Debe revertir si la nueva dirección es cero", async function () {
+      await expect(dispersionContract.connect(governance).updateDispersion(ethers.ZeroAddress))
+        .to.be.revertedWith("Invalid dispersion address");
+    });
+
+    it("Debe revertir si la nueva dirección es la misma que la actual", async function () {
+      await expect(dispersionContract.connect(governance).updateDispersion(dispersion.address))
+        .to.be.revertedWith("New dispersion same as current");
+    });
+
+    it("Debe revertir si el llamante no es governance", async function () {
+      await expect(dispersionContract.connect(user1).updateDispersion(user2.address))
+        .to.be.revertedWith("Not authorized: only governance");
+    });
+  });
+
+  describe("Retiro de CELO", function () {
+    it("Debe permitir al governance retirar todo el CELO", async function () {
+      const contractBalance = await ethers.provider.getBalance(await dispersionContract.getAddress());
+      
+      const tx = await dispersionContract.connect(governance).withdrawCelo();
+      const receipt = await tx.wait();
+      
+      const gasCost = receipt.gasUsed * receipt.gasPrice;
+      
+      await expect(tx)
+        .to.emit(dispersionContract, "CeloWithdrawn")
+        .withArgs(governance.address, contractBalance);
+      
+      const newContractBalance = await ethers.provider.getBalance(await dispersionContract.getAddress());
+      expect(newContractBalance).to.equal(0);
+    });
+
+    it("Debe revertir si no hay CELO para retirar", async function () {
+      // Retirar todo el CELO primero
+      await dispersionContract.connect(governance).withdrawCelo();
+      
+      await expect(dispersionContract.connect(governance).withdrawCelo())
+        .to.be.revertedWith("No CELO to withdraw");
+    });
+
+    it("Debe revertir si el llamante no es governance", async function () {
+      await expect(dispersionContract.connect(user1).withdrawCelo())
+        .to.be.revertedWith("Not authorized: only governance");
     });
   });
 

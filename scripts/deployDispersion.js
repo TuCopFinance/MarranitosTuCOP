@@ -1,50 +1,46 @@
 const hre = require("hardhat");
-const { ethers } = require("hardhat");
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
+  const [deployer] = await hre.ethers.getSigners();
   console.log("Desplegando contratos con la cuenta:", deployer.address);
 
-  // Obtener los parámetros de despliegue del ambiente
-  const tokenAddress = process.env.CCOP_TOKEN_ADDRESS;
-  const governanceAddress = process.env.GOVERNANCE_ADDRESS;
-  const dispersionAddresssc = process.env.DEVELOPER_WALLET;
-  const fixedAmount = ethers.parseEther(process.env.FIXED_AMOUNT);
+  // Dirección del contrato de gobernanza (usamos la misma cuenta por ahora)
+  const governanceAddress = deployer.address;
+  
+  // Dirección del contrato de dispersión (usamos la misma cuenta por ahora)
+  const dispersionAddress = deployer.address;
+  
+  // Cantidad fija de ETH a dispersar (0.01 ETH)
+  const fixedAmount = hre.ethers.parseEther("0.01");
 
-  if (!tokenAddress || !governanceAddress || !fixedAmount) {
-    throw new Error("Falta configurar variables de ambiente: TOKEN_ADDRESS, GOVERNANCE_ADDRESS, FIXED_AMOUNT");
-  }
-
-  console.log("Token Address:", tokenAddress);
   console.log("Governance Address:", governanceAddress);
-  console.log("Fixed Amount (wei):", fixedAmount.toString());
+  console.log("Dispersion Address:", dispersionAddress);
+  console.log("Fixed Amount (ETH):", hre.ethers.formatEther(fixedAmount));
 
   // Desplegar el contrato
-  const DispersionContract = await ethers.getContractFactory("DispersionContract");
-  const dispersion = await DispersionContract.deploy(
-    tokenAddress,
+  const DispersionContract = await hre.ethers.getContractFactory("DispersionContract");
+  const dispersionContract = await DispersionContract.deploy(
     governanceAddress,
-    dispersionAddresssc,
+    dispersionAddress,
     fixedAmount
   );
 
-  await dispersion.waitForDeployment();
-  const dispersionAddress = await dispersion.getAddress();
-
-  console.log("DispersionContract desplegado en:", dispersionAddress);
+  await dispersionContract.waitForDeployment();
+  const contractAddress = await dispersionContract.getAddress();
+  console.log("DispersionContract desplegado en:", contractAddress);
 
   // Solo verificar si no estamos en la red local
   if (hre.network.name !== "hardhat" && hre.network.name !== "localhost") {
     // Esperar para la verificación
     console.log("Esperando 5 bloques para la verificación...");
-    await dispersion.deploymentTransaction().wait(5);
+    await dispersionContract.deploymentTransaction().wait(5);
 
     // Verificar el contrato
     console.log("Verificando contrato...");
     try {
       await hre.run("verify:verify", {
-        address: dispersionAddress,
-        constructorArguments: [tokenAddress, governanceAddress, dispersionAddresssc, fixedAmount],
+        address: contractAddress,
+        constructorArguments: [governanceAddress, dispersionAddress, fixedAmount],
       });
       console.log("Contrato verificado exitosamente");
     } catch (error) {
