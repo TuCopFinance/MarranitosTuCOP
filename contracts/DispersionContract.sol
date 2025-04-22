@@ -1,32 +1,25 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title DispersionContract
- * @dev Contrato para dispersar una cantidad fija de tokens a una dirección específica
+ * @dev Contrato para dispersar una cantidad fija de ETH a una dirección específica
  * con autorización de gobernanza.
  */
 contract DispersionContract is ReentrancyGuard {
-    using SafeERC20 for IERC20;
-
     // Dirección del contrato de gobernanza
     address public governance;
 
     // Dirección del contrato de dispersión
     address public dispersion;
 
-    // Token a dispersar
-    IERC20 public immutable token;
-
     // Cantidad fija a dispersar
     uint256 public fixedAmount;
 
     // Eventos
-    event TokensDispersed(address indexed recipient, uint256 amount);
+    event EthDispersed(address indexed recipient, uint256 amount);
     event GovernanceUpdated(
         address indexed oldGovernance,
         address indexed newGovernance
@@ -35,23 +28,19 @@ contract DispersionContract is ReentrancyGuard {
 
     /**
      * @dev Constructor del contrato
-     * @param _token Dirección del token a dispersar
      * @param _governance Dirección del contrato de gobernanza
      * @param _dispersion Dirección del contrato de dispersión
-     * @param _fixedAmount Cantidad fija de tokens a dispersar
+     * @param _fixedAmount Cantidad fija de ETH a dispersar
      */
     constructor(
-        address _token,
         address _governance,
         address _dispersion,
         uint256 _fixedAmount
     ) {
-        require(_token != address(0), "Invalid token address");
         require(_governance != address(0), "Invalid governance address");
         require(_dispersion != address(0), "Invalid dispersion address");
         require(_fixedAmount > 0, "Invalid fixed amount");
 
-        token = IERC20(_token);
         governance = _governance;
         dispersion = _dispersion;
         fixedAmount = _fixedAmount;
@@ -74,36 +63,23 @@ contract DispersionContract is ReentrancyGuard {
     }
 
     /**
-     * @dev Dispersa la cantidad fija de tokens a una dirección específica
-     * @param _recipient Dirección que recibirá los tokens
+     * @dev Dispersa la cantidad fija de ETH a una dirección específica
+     * @param _recipient Dirección que recibirá el ETH
      */
-    function disperseTokens(
+    function disperseEth(
         address _recipient
     ) external onlyDispersion nonReentrant {
         // Verificar balance del contrato
-        uint256 contractBalance = token.balanceOf(address(this));
         require(
-            contractBalance >= fixedAmount,
+            address(this).balance >= fixedAmount,
             "Insufficient contract balance"
         );
 
-        // Transferir tokens al destinatario
-        token.safeTransfer(_recipient, fixedAmount);
+        // Transferir ETH al destinatario
+        (bool success, ) = _recipient.call{value: fixedAmount}("");
+        require(success, "ETH transfer failed");
 
-        emit TokensDispersed(_recipient, fixedAmount);
-    }
-
-    /**
-     * @dev Permite al governance retirar cualquier token que no sea el token principal
-     * @param _token Dirección del token a retirar
-     * @param _amount Cantidad de tokens a retirar
-     */
-    function withdrawOtherTokens(
-        address _token,
-        uint256 _amount
-    ) external onlyGovernance {
-        require(_token != address(token), "Cannot withdraw main token");
-        IERC20(_token).safeTransfer(governance, _amount);
+        emit EthDispersed(_recipient, fixedAmount);
     }
 
     /**
@@ -123,8 +99,8 @@ contract DispersionContract is ReentrancyGuard {
     }
 
     /**
-     * @dev Permite al governance actualizar la cantidad fija de tokens a dispersar
-     * @param _newFixedAmount Nueva cantidad fija de tokens
+     * @dev Permite al governance actualizar la cantidad fija de ETH a dispersar
+     * @param _newFixedAmount Nueva cantidad fija de ETH
      */
     function updateFixedAmount(
         uint256 _newFixedAmount
@@ -136,4 +112,7 @@ contract DispersionContract is ReentrancyGuard {
 
         emit FixedAmountUpdated(oldAmount, _newFixedAmount);
     }
+
+    // Función para recibir ETH
+    receive() external payable {}
 }
