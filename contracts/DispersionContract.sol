@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
@@ -11,7 +10,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  * @dev Contrato para dispersar una cantidad fija de tokens a una dirección específica
  * con autorización de gobernanza.
  */
-contract DispersionContract is Ownable, ReentrancyGuard {
+contract DispersionContract is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     // Dirección del contrato de gobernanza
@@ -46,7 +45,7 @@ contract DispersionContract is Ownable, ReentrancyGuard {
         address _governance,
         address _dispersion,
         uint256 _fixedAmount
-    ) Ownable(msg.sender) {
+    ) {
         require(_token != address(0), "Invalid token address");
         require(_governance != address(0), "Invalid governance address");
         require(_dispersion != address(0), "Invalid dispersion address");
@@ -95,7 +94,7 @@ contract DispersionContract is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev Permite al owner retirar cualquier token que no sea el token principal
+     * @dev Permite al governance retirar cualquier token que no sea el token principal
      * @param _token Dirección del token a retirar
      * @param _amount Cantidad de tokens a retirar
      */
@@ -104,7 +103,7 @@ contract DispersionContract is Ownable, ReentrancyGuard {
         uint256 _amount
     ) external onlyGovernance {
         require(_token != address(token), "Cannot withdraw main token");
-        IERC20(_token).safeTransfer(owner(), _amount);
+        IERC20(_token).safeTransfer(governance, _amount);
     }
 
     /**

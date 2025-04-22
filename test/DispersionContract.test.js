@@ -6,7 +6,6 @@ describe("DispersionContract", function () {
   let token;
   let governance;
   let dispersion;
-  let owner;
   let user1;
   let user2;
   
@@ -15,7 +14,7 @@ describe("DispersionContract", function () {
 
   beforeEach(async function () {
     // Obtener las cuentas de prueba
-    [owner, governance, dispersion, user1, user2] = await ethers.getSigners();
+    [governance, dispersion, user1, user2] = await ethers.getSigners();
     
     // Desplegar el token cCOP (un ERC20 simple para pruebas)
     const MockERC20 = await ethers.getContractFactory("MockERC20");
@@ -128,7 +127,7 @@ describe("DispersionContract", function () {
         fixedAmount
       );
       
-      expect(await otherToken.balanceOf(owner.address)).to.equal(initialSupply);
+      expect(await otherToken.balanceOf(governance.address)).to.equal(initialSupply);
     });
 
     it("Debe revertir al intentar retirar el token principal", async function () {
