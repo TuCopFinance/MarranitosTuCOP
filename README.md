@@ -104,7 +104,7 @@ function calculateRewards(Stake memory _stake) public view returns (uint256)
 
 ## 🔐 Distribución de Intereses
 
-El contrato mantiene un pool de intereses de 100,000,000 cCOP, distribuido proporcionalmente entre los diferentes períodos de staking:
+El contrato mantiene un pool de intereses, distribuido proporcionalmente entre los diferentes períodos de staking:
 - 40% para staking de 30 días
 - 35% para staking de 60 días
 - 25% para staking de 90 días
