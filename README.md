@@ -17,7 +17,11 @@ Smart contract de staking desarrollado con Solidity y Hardhat que permite a los 
 
 ## 📌 Descripción General
 
-Este contrato inteligente permite a los usuarios hacer staking de tokens cCOP para recibir recompensas basadas en diferentes períodos de tiempo. El contrato incluye características avanzadas como lista blanca de usuarios, paginación para consultas eficientes y un sistema de gobernanza para gestionar parámetros críticos.
+Este contrato inteligente permite a los usuarios hacer staking de tokens cCOP para recibir recompensas basadas en diferentes períodos de tiempo. **Importante: Solo los usuarios incluidos en la lista blanca pueden participar en el staking.** El contrato incluye características avanzadas como lista blanca de usuarios, paginación para consultas eficientes y un sistema de gobernanza para gestionar parámetros críticos.
+
+## ⚠️ Requisito Fundamental: Lista Blanca
+
+Para utilizar el contrato, los usuarios **deben estar incluidos en la lista blanca** previamente por los administradores del contrato. Cualquier intento de hacer staking desde una dirección no incluida en la lista blanca será rechazado por el contrato.
 
 ## 🔒 Períodos de Staking Disponibles
 
@@ -47,21 +51,31 @@ Para asegurar la sostenibilidad del sistema, se han establecido los siguientes l
 
 ## 🔄 Casos de Uso
 
-### 1. Staking de Tokens
-Los usuarios pueden depositar sus tokens cCOP eligiendo uno de los tres períodos disponibles. Los tokens quedarán bloqueados hasta finalizar el período seleccionado.
+### 1. Gestión de Lista Blanca
+Solo los usuarios incluidos en la lista blanca por la gobernanza pueden participar en el staking. Este es un requisito previo para utilizar cualquier otra funcionalidad.
 
 ```solidity
-function stake(uint256 _amount, uint256 _duration) external
+function addToWhitelist(address _user) external onlyGovernance
+function removeFromWhitelist(address _user) external onlyGovernance
+function addMultipleToWhitelist(address[] calldata _users) external onlyGovernance
+function isWhitelisted(address _user) public view returns (bool)
 ```
 
-### 2. Retiro de Tokens y Recompensas
+### 2. Staking de Tokens
+Los usuarios en lista blanca pueden depositar sus tokens cCOP eligiendo uno de los tres períodos disponibles. Los tokens quedarán bloqueados hasta finalizar el período seleccionado.
+
+```solidity
+function stake(uint256 _amount, uint256 _duration) external onlyWhitelisted
+```
+
+### 3. Retiro de Tokens y Recompensas
 Una vez finalizado el período de staking, los usuarios pueden retirar su capital inicial más las recompensas generadas.
 
 ```solidity
 function withdraw(uint256 _stakeIndex) external
 ```
 
-### 3. Consulta de Staking Activos
+### 4. Consulta de Staking Activos
 Los usuarios pueden consultar todos sus stakes activos o utilizar la paginación para obtener resultados más específicos.
 
 ```solidity
@@ -70,24 +84,14 @@ function getUserStakesPaginated(address _user, uint256 _offset, uint256 _limit) 
 function getTotalActiveStakesPaginated(address _user, uint256 _offset, uint256 _limit) external view
 ```
 
-### 4. Gestión de Lista Blanca
-Solo los usuarios incluidos en la lista blanca pueden participar en el staking.
-
-```solidity
-function addToWhitelist(address _user) external
-function removeFromWhitelist(address _user) external
-function addMultipleToWhitelist(address[] calldata _users) external
-function isWhitelisted(address _user) public view
-```
-
 ### 5. Funciones de Gobernanza
 La gobernanza puede actualizar parámetros críticos como las tasas de interés y recuperar tokens no reclamados.
 
 ```solidity
-function updateDeveloperWallet(address _newWallet) external
-function updateGovernance(address _newGovernance) external
-function updateStakingRates(uint256 _rate30, uint256 _rate60, uint256 _rate90) external
-function sweepUnclaimedTokens(uint256 _daysThreshold) external
+function updateDeveloperWallet(address _newWallet) external onlyGovernance
+function updateGovernance(address _newGovernance) external onlyGovernance
+function updateStakingRates(uint256 _rate30, uint256 _rate60, uint256 _rate90) external onlyGovernance
+function sweepUnclaimedTokens(uint256 _daysThreshold) external onlyGovernance
 ```
 
 ## 📈 Cálculo de Recompensas
@@ -119,5 +123,5 @@ Este contrato está licenciado bajo MIT.
 
 ## 📂 Contacto y Soporte
 
-Para consultas o soporte, puedes contactarnos en [[tu correo o sitio web](https://intechchain.com/)].
+Para consultas o soporte, puedes contactarnos en [[intechchain](https://intechchain.com/)].
 
