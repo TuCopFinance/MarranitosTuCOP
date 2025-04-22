@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.26;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -39,12 +39,17 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     uint256 private constant PERCENTAGE_BASE = 100;
 
     // Límites de staking
-    uint256 public constant MAX_STAKE_30 = 3160493827 * 1e18;
-    uint256 public constant MAX_STAKE_60 = 2264877414 * 1e18;
-    uint256 public constant MAX_STAKE_90 = 1177902918 * 1e18;
+    uint256 public constant MAX_STAKE_30 = 3160493827 * 1e18; // $3,160,493,827 COP
+    uint256 public constant MAX_STAKE_60 = 2264877414 * 1e18; // $2,264,877,414 COP
+    uint256 public constant MAX_STAKE_90 = 1177902918 * 1e18; // $1,177,902,918 COP
 
     // Tasas de interés (base 10000)
     uint256 private constant RATE_BASE = 10000;
+
+    // Distribución de intereses (base 100)
+    uint256 private constant DISTRIBUTION_30_DAYS = 40; // 40%
+    uint256 private constant DISTRIBUTION_60_DAYS = 35; // 35%
+    uint256 private constant DISTRIBUTION_90_DAYS = 25; // 25%
 
     // Errores personalizados
     error InvalidDuration();
@@ -56,13 +61,17 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     error InvalidStakingPeriod();
     error ExceedsStakingLimit();
     error NotWhitelisted();
+    error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed);
+    error ERC20InsufficientAllowance(address spender, uint256 allowance, uint256 amount);
 
     // Nuevas variables para parámetros ajustables
-    uint256 public earlyWithdrawalPenalty = 20; // 20% por defecto
-    uint256 public stakingRate30Days = 125; // 1.25%
-    uint256 public stakingRate60Days = 150; // 1.50%
-    uint256 public stakingRate90Days = 200; // 2.00%
+    uint256 public stakingRate30Days = 125; // 1.25% nominal mensual
+    uint256 public stakingRate60Days = 150; // 1.50% nominal mensual
+    uint256 public stakingRate90Days = 200; // 2.00% nominal mensual
 
+    // Variables para el pool de intereses
+    uint256 public interestPool = 100000000 * 1e18; // $100,000,000 COP para pagos de intereses
+    
     // Agregar nuevo mapping para la lista blanca
     mapping(address => bool) public whitelisted;
     
@@ -77,18 +86,11 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         address indexed oldWallet,
         address indexed newWallet
     );
-    event EarlyWithdrawn(
-        address indexed user,
-        uint256 originalAmount,
-        uint256 penalty,
-        uint256 withdrawnAmount
-    );
     event GovernanceUpdated(
         address indexed oldGovernance,
         address indexed newGovernance
     );
     event RatesUpdated(uint256 rate30, uint256 rate60, uint256 rate90);
-    event PenaltyUpdated(uint256 newPenalty);
 
     /**
      * @dev Constructor del contrato.
@@ -116,8 +118,19 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      * @notice Modificador para verificar si una dirección está en la lista blanca
      */
     modifier onlyWhitelisted() {
-        if (!whitelisted[msg.sender]) revert NotWhitelisted();
+        if (!whitelisted[msg.sender]) {
+            revert NotWhitelisted();
+        }
         _;
+    }
+
+    /**
+     * @notice Verifica si una dirección está en la lista blanca
+     * @param _user Dirección a verificar
+     * @return bool Verdadero si la dirección está en la lista blanca
+     */
+    function isWhitelisted(address _user) public view returns (bool) {
+        return whitelisted[_user];
     }
 
     /**
@@ -125,17 +138,37 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
      * @param _amount Cantidad de cCOP a hacer stake.
      * @param _duration Duración del staking (30, 60 o 90 días).
      */
-    function stake(uint256 _amount, uint256 _duration) external nonReentrant onlyWhitelisted {
-        if (
-            _duration != DAYS_30 && _duration != DAYS_60 && _duration != DAYS_90
-        ) {
+    function stake(uint256 _amount, uint256 _duration) external nonReentrant {
+        // Verificar lista blanca primero
+        if (!whitelisted[msg.sender]) {
+            revert NotWhitelisted();
+        }
+
+        // Verificar monto
+        if (_amount == 0) {
+            revert("Amount must be greater than 0");
+        }
+
+        // Verificar duración
+        if (_duration != DAYS_30 && _duration != DAYS_60 && _duration != DAYS_90) {
             revert InvalidStakingPeriod();
         }
-        require(_amount > 0, "Amount must be greater than 0");
 
         // Verificar límites según la duración
         if (_amount > getMaxStakeAmount(_duration)) {
             revert ExceedsStakingLimit();
+        }
+
+        // Verificar balance y allowance antes de la transferencia
+        uint256 balance = cCOP.balanceOf(msg.sender);
+        uint256 allowance = cCOP.allowance(msg.sender, address(this));
+
+        if (balance < _amount) {
+            revert ERC20InsufficientBalance(msg.sender, balance, _amount);
+        }
+
+        if (allowance < _amount) {
+            revert ERC20InsufficientAllowance(address(this), allowance, _amount);
         }
 
         // Transferir tokens al contrato
@@ -190,19 +223,40 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         Stake memory _stake
     ) public view returns (uint256) {
         uint256 rate;
+        uint256 distribution;
+        
         if (_stake.duration == DAYS_30) {
             rate = stakingRate30Days;
+            distribution = DISTRIBUTION_30_DAYS;
         } else if (_stake.duration == DAYS_60) {
             rate = stakingRate60Days;
+            distribution = DISTRIBUTION_60_DAYS;
         } else if (_stake.duration == DAYS_90) {
             rate = stakingRate90Days;
+            distribution = DISTRIBUTION_90_DAYS;
         } else {
             revert InvalidDuration();
         }
-        return (_stake.amount * rate) / RATE_BASE;
+
+        // Calcular intereses basados en la tasa nominal mensual
+        uint256 monthlyInterest = (_stake.amount * rate) / RATE_BASE;
+        
+        // Calcular intereses totales según la duración
+        uint256 totalInterest;
+        if (_stake.duration == DAYS_30) {
+            totalInterest = monthlyInterest;
+        } else if (_stake.duration == DAYS_60) {
+            totalInterest = monthlyInterest * 2;
+        } else if (_stake.duration == DAYS_90) {
+            totalInterest = monthlyInterest * 3;
+        }
+
+        // Aplicar distribución del pool de intereses
+        uint256 poolShare = (interestPool * distribution) / 100;
+        return totalInterest > poolShare ? poolShare : totalInterest;
     }
 
-    /**
+    /** 
      * @notice Obtiene el límite máximo de staking según la duración.
      * @param _duration Duración del staking.
      * @return Límite máximo de staking en cCOP.
@@ -304,36 +358,6 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         emit GovernanceUpdated(oldGovernance, _newGovernance);
     }
 
-    /**
-     * @notice Permite a los usuarios retirar anticipadamente su staking con una penalización.
-     * La penalización del 20% se transfiere a la wallet del desarrollador.
-     * @param _stakeIndex Índice del staking en el array del usuario.
-     */
-    function earlyWithdraw(uint256 _stakeIndex) external nonReentrant {
-        if (_stakeIndex >= stakes[msg.sender].length)
-            revert InvalidStakeIndex();
-        Stake storage userStake = stakes[msg.sender][_stakeIndex];
-        if (userStake.claimed) revert StakeAlreadyClaimed();
-        if (block.timestamp >= userStake.endTime) revert StakePeriodEnded();
-
-        uint256 penalty = (userStake.amount * earlyWithdrawalPenalty) / 100;
-        uint256 amountToReturn = userStake.amount - penalty;
-
-        userStake.claimed = true;
-
-        // Transferir el monto menos la penalización al usuario
-        cCOP.safeTransfer(msg.sender, amountToReturn);
-        // Transferir la penalización a la wallet del desarrollador
-        cCOP.safeTransfer(developerWallet, penalty);
-
-        emit EarlyWithdrawn(
-            msg.sender,
-            userStake.amount,
-            penalty,
-            amountToReturn
-        );
-    }
-
     // Nuevas funciones de gobernanza
     function updateStakingRates(
         uint256 _rate30,
@@ -346,14 +370,6 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
         stakingRate60Days = _rate60;
         stakingRate90Days = _rate90;
         emit RatesUpdated(_rate30, _rate60, _rate90);
-    }
-
-    function updateEarlyWithdrawalPenalty(
-        uint256 _newPenalty
-    ) external onlyGovernance nonReentrant {
-        if (_newPenalty > 50) revert InvalidParameter(); // Máximo 50%
-        earlyWithdrawalPenalty = _newPenalty;
-        emit PenaltyUpdated(_newPenalty);
     }
 
     // Nueva función para recuperar tokens no reclamados
@@ -378,7 +394,7 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
 
     /**
      * @notice Agrega una dirección a la lista blanca
-     * @param _user Dirección a agregar
+     * @param _user Dirección a agregar a la lista blanca
      */
     function addToWhitelist(address _user) external onlyGovernance {
         if (_user == address(0)) revert InvalidParameter();
@@ -387,8 +403,8 @@ contract cCOPStaking is ReentrancyGuard, Ownable {
     }
 
     /**
-     * @notice Elimina una dirección de la lista blanca
-     * @param _user Dirección a eliminar
+     * @notice Remueve una dirección de la lista blanca
+     * @param _user Dirección a remover de la lista blanca
      */
     function removeFromWhitelist(address _user) external onlyGovernance {
         if (_user == address(0)) revert InvalidParameter();
