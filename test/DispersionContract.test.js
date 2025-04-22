@@ -26,8 +26,8 @@ describe("DispersionContract", function () {
     dispersionContract = await DispersionContract.deploy(
       await token.getAddress(),
       governance.address,
-      fixedAmount,
-      dispersion.address
+      dispersion.address,
+      fixedAmount
     );
     
     // Transferir tokens al contrato de dispersión
@@ -56,8 +56,8 @@ describe("DispersionContract", function () {
       await expect(DispersionContract.deploy(
         ethers.ZeroAddress,
         governance.address,
-        fixedAmount,
-        dispersion.address
+        dispersion.address,
+        fixedAmount
       )).to.be.revertedWith("Invalid token address");
     });
 
@@ -66,8 +66,8 @@ describe("DispersionContract", function () {
       await expect(DispersionContract.deploy(
         await token.getAddress(),
         ethers.ZeroAddress,
-        fixedAmount,
-        dispersion.address
+        dispersion.address,
+        fixedAmount
       )).to.be.revertedWith("Invalid governance address");
     });
 
@@ -76,8 +76,8 @@ describe("DispersionContract", function () {
       await expect(DispersionContract.deploy(
         await token.getAddress(),
         governance.address,
-        0,
-        dispersion.address
+        dispersion.address,
+        0
       )).to.be.revertedWith("Invalid fixed amount");
     });
   });

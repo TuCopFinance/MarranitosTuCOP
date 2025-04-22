@@ -38,18 +38,19 @@ contract DispersionContract is Ownable, ReentrancyGuard {
      * @dev Constructor del contrato
      * @param _token Dirección del token a dispersar
      * @param _governance Dirección del contrato de gobernanza
+     * @param _dispersion Dirección del contrato de dispersión
      * @param _fixedAmount Cantidad fija de tokens a dispersar
      */
     constructor(
         address _token,
         address _governance,
-        uint256 _fixedAmount,
-        address _dispersion
+        address _dispersion,
+        uint256 _fixedAmount
     ) Ownable(msg.sender) {
         require(_token != address(0), "Invalid token address");
         require(_governance != address(0), "Invalid governance address");
-        require(_fixedAmount > 0, "Invalid fixed amount");
         require(_dispersion != address(0), "Invalid dispersion address");
+        require(_fixedAmount > 0, "Invalid fixed amount");
 
         token = IERC20(_token);
         governance = _governance;
