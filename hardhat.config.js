@@ -11,27 +11,10 @@ const COINMARKETCAP_API_KEY = process.env.COINMARKETCAP_API_KEY;
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
-  solidity: {
-    version: "0.8.26",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 1000,
-        details: {
-          yul: true,
-          yulDetails: {
-            stackAllocation: true,
-            optimizerSteps: "dhfoDgvulfnTUtnIf"
-          }
-        }
-      },
-      viaIR: false
-    }
-  },
+  solidity: "0.8.20",
   networks: {
     hardhat: {
-      chainId: 1337,
-      allowUnlimitedContractSize: true
+      chainId: 1337
     },
     celo: {
       url: CELO_RPC_URL || "https://forno.celo.org",
